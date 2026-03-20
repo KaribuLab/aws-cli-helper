@@ -35,7 +35,8 @@ docker run --rm -it \
 
 Notas:
 - El contenedor ya trae `awscli`, `bash` y `jq`.
-- Si no hay `secret-tool`, el script usa cache local de sesion en `~/.aws/.cache/aws_ai`.
+- Si no hay `secret-tool`, el script usa cache local cifrada (`openssl`) en `~/.aws/.cache/aws_ai`.
+- Puedes pasar `AWS_AI_CACHE_PASSPHRASE` por `--env-file .env` o ingresarla cuando el script la pida.
 - El entrypoint desactiva el pager de AWS (`AWS_PAGER=""`) para evitar error por falta de `less`.
 - Variables sensibles/configurables se leen desde entorno: `AWS_AI_PROFILE`, `AWS_AI_ASSUME_ROLE_ARN`, `AWS_AI_MFA_SERIAL_ARN`.
 - `.env` no se ignora en git por defecto en este proyecto.
