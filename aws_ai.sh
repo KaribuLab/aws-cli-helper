@@ -76,6 +76,17 @@ secret_app="${AWS_AI_SECRET_APP:-aws-ai}"
 assume_role_name="${AWS_AI_ASSUME_ROLE_NAME:-${assume_role_arn##*/}}"
 secret_role="${AWS_AI_SECRET_ROLE:-$assume_role_name}"
 
+# Duración de la sesión STS (segundos). Límite API: 900–43200; el rol puede imponer un máximo menor.
+session_duration_seconds="${AWS_AI_SESSION_DURATION_SECONDS:-900}"
+if ! [[ "$session_duration_seconds" =~ ^[0-9]+$ ]]; then
+    log_error "AWS_AI_SESSION_DURATION_SECONDS debe ser un entero (segundos). Valor actual: ${session_duration_seconds}"
+    exit 1
+fi
+if [ "$session_duration_seconds" -lt 900 ] || [ "$session_duration_seconds" -gt 43200 ]; then
+    log_error "AWS_AI_SESSION_DURATION_SECONDS debe estar entre 900 y 43200 (segundos). Valor actual: ${session_duration_seconds}"
+    exit 1
+fi
+
 if [ -z "$aws_profile" ] || [ -z "$assume_role_arn" ] || [ -z "$mfa_serial_arn" ]; then
     log_error "Faltan variables requeridas: AWS_AI_PROFILE, AWS_AI_ASSUME_ROLE_ARN y AWS_AI_MFA_SERIAL_ARN"
     exit 1
@@ -422,7 +433,7 @@ CREDS=$(aws sts assume-role \
 --role-session-name ai-session \
 --serial-number "$mfa_serial_arn" \
 --token-code "$MFA_CODE" \
---duration-seconds 900)
+--duration-seconds "$session_duration_seconds")
 
 # Validar que STS respondió correctamente
 
@@ -441,7 +452,8 @@ export AWS_CREDENTIAL_EXPIRATION_EPOCH=$(date -d "$AWS_CREDENTIAL_EXPIRATION" +%
 
 store_persisted_session
 
-log_info "✅ Sesión temporal generada (15 min)"
+session_duration_min=$((session_duration_seconds / 60))
+log_info "✅ Sesión temporal generada (${session_duration_seconds}s, ~${session_duration_min} min)"
 fi
 
 # ----------------------------
