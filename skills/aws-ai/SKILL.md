@@ -5,7 +5,7 @@ description: Run AWS commands through the aws-ai CLI helper with MFA-aware sessi
 
 # aws-ai
 
-Use this skill to execute AWS CLI commands through the `aws-ai` helper wrapper (local script or Docker image). All agent-driven operations must use **unattended mode** (`-e AWS_AI_UNATTENDED=true`) to avoid blocking on MFA prompts.
+Use this skill to execute AWS CLI commands through the **Docker image** for the `aws-ai` helper (supported path). All agent-driven operations must use **unattended mode** (`-e AWS_AI_UNATTENDED=true`) to avoid blocking on MFA prompts.
 
 ## When to use
 

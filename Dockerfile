@@ -5,6 +5,7 @@ RUN apt-get update \
         awscli \
         bash \
         jq \
+        openssl \
         ca-certificates \
         tzdata \
     && rm -rf /var/lib/apt/lists/*

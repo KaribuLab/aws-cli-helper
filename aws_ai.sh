@@ -116,11 +116,13 @@ fi
 cache_dir="${AWS_AI_CACHE_DIR:-$HOME/.aws/.cache/aws_ai}"
 cache_file="${cache_dir}/${aws_profile}_${secret_role}.enc"
 
-persist_backend=encrypted_file
 if command -v secret-tool >/dev/null 2>&1; then
     persist_backend=keyring
-elif ! command -v openssl >/dev/null 2>&1; then
-    persist_backend=file
+elif command -v openssl >/dev/null 2>&1; then
+    persist_backend=encrypted_file
+else
+    log_error "Se requiere openssl para persistir credenciales sin almacenarlas en texto plano. Instala el paquete openssl en el host o usa la imagen Docker del proyecto (incluye openssl)."
+    exit 1
 fi
 
 log_debug "Persistencia de sesión: ${persist_backend}"
@@ -247,55 +249,6 @@ store_encrypted_file_session(){
     chmod 600 "$cache_file"
 }
 
-load_file_session(){
-    if [ ! -f "$cache_file" ]; then
-        return 1
-    fi
-
-    # shellcheck disable=SC1090
-    source "$cache_file"
-    export AWS_ACCESS_KEY_ID
-    export AWS_SECRET_ACCESS_KEY
-    export AWS_SESSION_TOKEN
-    export AWS_CREDENTIAL_EXPIRATION
-    export AWS_CREDENTIAL_EXPIRATION_EPOCH
-}
-
-store_file_session(){
-    local tmp_file
-    tmp_file="${cache_file}.tmp.$$"
-
-    if ! mkdir -p "$cache_dir" 2>/dev/null; then
-        log_error "No pude crear cache_dir: $cache_dir"
-        return 1
-    fi
-
-    if [ ! -w "$cache_dir" ]; then
-        log_error "Sin permisos de escritura en cache_dir: $cache_dir"
-        return 1
-    fi
-
-    if ! {
-        printf 'AWS_ACCESS_KEY_ID=%q\n' "$AWS_ACCESS_KEY_ID"
-        printf 'AWS_SECRET_ACCESS_KEY=%q\n' "$AWS_SECRET_ACCESS_KEY"
-        printf 'AWS_SESSION_TOKEN=%q\n' "$AWS_SESSION_TOKEN"
-        printf 'AWS_CREDENTIAL_EXPIRATION=%q\n' "$AWS_CREDENTIAL_EXPIRATION"
-        printf 'AWS_CREDENTIAL_EXPIRATION_EPOCH=%q\n' "$AWS_CREDENTIAL_EXPIRATION_EPOCH"
-    } > "$tmp_file"; then
-        log_error "No pude escribir cache temporal: $tmp_file"
-        rm -f "$tmp_file"
-        return 1
-    fi
-
-    if ! mv "$tmp_file" "$cache_file"; then
-        log_error "No pude mover cache temporal a: $cache_file"
-        rm -f "$tmp_file"
-        return 1
-    fi
-
-    chmod 600 "$cache_file"
-}
-
 clear_file_session(){
     rm -f "$cache_file"
 }
@@ -331,8 +284,6 @@ clear_keyring_session(){
 clear_persisted_session(){
     if [ "$persist_backend" = "keyring" ]; then
         clear_keyring_session
-    elif [ "$persist_backend" = "encrypted_file" ]; then
-        clear_file_session
     else
         clear_file_session
     fi
@@ -364,10 +315,8 @@ load_keyring_session(){
 load_persisted_session(){
     if [ "$persist_backend" = "keyring" ]; then
         load_keyring_session
-    elif [ "$persist_backend" = "encrypted_file" ]; then
-        load_encrypted_file_session
     else
-        load_file_session
+        load_encrypted_file_session
     fi
 }
 
@@ -380,17 +329,11 @@ store_persisted_session(){
            ! secret_store expiration_epoch "$AWS_CREDENTIAL_EXPIRATION_EPOCH"; then
             log_error "No pude guardar la sesión en keyring. Esta ejecución funciona, pero no persistirá."
         fi
-    elif [ "$persist_backend" = "encrypted_file" ]; then
+    else
         if store_encrypted_file_session; then
             log_debug "Sesión guardada en archivo cifrado: $cache_file"
         else
             log_error "No pude persistir la sesión cifrada. Esta ejecución funciona, pero no persistirá."
-        fi
-    else
-        if store_file_session; then
-            log_debug "Sesión guardada en archivo local (texto plano): $cache_file"
-        else
-            log_error "No pude persistir la sesión en archivo. Esta ejecución funciona, pero no persistirá."
         fi
     fi
 }
