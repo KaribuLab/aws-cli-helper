@@ -1,0 +1,145 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - "main"
+  workflow_dispatch:
+
+jobs:
+  check_tag:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      tag_exists: ${{ steps.check_tag.outputs.tag_exists }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download kli
+        id: download_kli
+        run: |
+          curl -sL https://github.com/KaribuLab/kli/releases/download/v0.4.0/kli-linux-amd64.tar.gz  --output kli.tar.gz
+          tar -xzf ./kli.tar.gz
+          mv ./kli-linux-amd64 ./kli
+      - name: Check tag
+        id: check_tag
+        run: |
+          chmod +x ./kli
+          LATEST_VERSION=$( ./kli semver 2>&1 )
+          LATEST_GIT_TAG=$( git describe --tags --abbrev=0 || echo "" )
+          echo "latest_version=$LATEST_VERSION"
+          echo "latest_git_tag=$LATEST_GIT_TAG"
+          if [ "$LATEST_VERSION" == "$LATEST_GIT_TAG" ]; then
+            echo "tag_exists=true"
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_exists=false"
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kli
+          path: kli
+  create_tag:
+    needs: check_tag
+    runs-on: ubuntu-latest
+    if: needs.check_tag.outputs.tag_exists == 'false'
+    outputs:
+      tag_created: ${{ steps.create_tag.outputs.tag_created }}
+      image_version: ${{ steps.create_tag.outputs.image_version }}
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Git user
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Download kli
+        uses: actions/download-artifact@v4
+        with:
+          name: kli
+          path: ./
+      - name: Create tag
+        id: create_tag
+        run: |
+
+          chmod +x kli
+          ./kli semver -tv
+          IMAGE_VERSION=$(git describe --tags --abbrev=0)
+          echo "tag_created=true" >> "$GITHUB_OUTPUT"
+          echo "image_version=${IMAGE_VERSION}" >> "$GITHUB_OUTPUT"
+  build_and_push_latest_main:
+    needs: check_tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/aws-ai:latest
+      - name: Slack Notification
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_CHANNEL: karibu-labs-it
+          SLACK_COLOR: ${{ job.status }}
+          SLACK_ICON: https://img.icons8.com/ios-filled/50/github.png
+          SLACK_MESSAGE: 'Nuevo push de la imagen Docker ${{ secrets.DOCKERHUB_USERNAME }}/aws-ai:latest :rocket:'
+          SLACK_TITLE: Nuevo push de la imagen Docker ${{ secrets.DOCKERHUB_USERNAME }}/aws-ai:latest
+          SLACK_USERNAME: github-actions
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+  build_and_push_tag:
+    needs: create_tag
+    if: needs.create_tag.outputs.tag_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/aws-ai:${{ needs.create_tag.outputs.image_version }}
+      - name: Slack Notification
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_CHANNEL: karibu-labs-it
+          SLACK_COLOR: ${{ job.status }}
+          SLACK_ICON: https://img.icons8.com/ios-filled/50/github.png
+          SLACK_MESSAGE: 'Nuevo push de la imagen Docker ${{ secrets.DOCKERHUB_USERNAME }}/aws-ai:${{ needs.create_tag.outputs.image_version }} de la rama main :rocket:'
+          SLACK_TITLE: Nuevo push de la imagen Docker ${{ secrets.DOCKERHUB_USERNAME }}/aws-ai:${{ needs.create_tag.outputs.image_version }} de la rama main
+          SLACK_USERNAME: github-actions
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
