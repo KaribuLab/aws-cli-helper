@@ -115,6 +115,10 @@ AWS_AI_MFA_TOKEN=123456 docker run --rm \
 
 El repositorio incluye `aws_ai.sh` para pruebas locales. **Requiere `openssl` en el PATH** (sin openssl el script termina con error: no hay persistencia en texto plano). El uso documentado para equipos es **Docker** arriba.
 
+## Licencia
+
+Este proyecto se distribuye bajo la **Apache License 2.0**. Ver el archivo [`LICENSE`](LICENSE).
+
 ## TODO
 
 - [ ] Incluir ejemplo para crear role y policies de IAM para usar con este helper
