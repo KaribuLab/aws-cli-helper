@@ -24,6 +24,10 @@ Use this skill to execute AWS CLI commands through the `aws-ai` helper wrapper (
 
 ## Agent execution policy (always unattended)
 
+### First aws-ai run in the conversation
+
+On the **first** time in the current chat session that the user asks you to run the helper (Docker flow), run **`docker pull`** for the image **before** any `docker run`, so the local image matches the registry (e.g. `docker pull karibu/aws-ai:latest`). Do this **once per conversation session**, not before every command.
+
 The agent must **always** run the helper in **unattended mode** by passing `-e AWS_AI_UNATTENDED=true` in every `docker run` invocation. Do not use `-i` or `-it`: MFA is supplied via `-e AWS_AI_MFA_TOKEN` on retry, not from stdin, so a fully non-interactive `docker run --rm` (no TTY, no stdin attach) is enough.
 
 ### Exit codes
