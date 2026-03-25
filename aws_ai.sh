@@ -76,6 +76,11 @@ secret_app="${AWS_AI_SECRET_APP:-aws-ai}"
 assume_role_name="${AWS_AI_ASSUME_ROLE_NAME:-${assume_role_arn##*/}}"
 secret_role="${AWS_AI_SECRET_ROLE:-$assume_role_name}"
 
+# Modo desatendido: si no hay sesión y no hay token, salir con código 2 en lugar de bloquear en read
+unattended_mode="${AWS_AI_UNATTENDED:-false}"
+# Token MFA para modo no interactivo (6 dígitos TOTP)
+mfa_token="${AWS_AI_MFA_TOKEN:-}"
+
 # Duración de la sesión STS (segundos). Límite API: 900–43200; el rol puede imponer un máximo menor.
 session_duration_seconds="${AWS_AI_SESSION_DURATION_SECONDS:-900}"
 if ! [[ "$session_duration_seconds" =~ ^[0-9]+$ ]]; then
@@ -421,11 +426,33 @@ elif load_persisted_session; then
 fi
 
 if [ "$session_ready" != "true" ]; then
-log_debug "Solicitando MFA"
-echo "🔐 Necesito MFA"
-read -p "Código MFA: " MFA_CODE
+    log_debug "Solicitando MFA"
 
-log_debug "Obteniendo credenciales temporales con STS"
+    # Modo con token proporcionado por variable de entorno
+    if [ -n "$mfa_token" ]; then
+        log_debug "Usando MFA_TOKEN desde variable de entorno"
+        # Validar formato: 6 dígitos
+        if ! [[ "$mfa_token" =~ ^[0-9]{6}$ ]]; then
+            log_error "AWS_AI_MFA_TOKEN debe ser un código de 6 dígitos numéricos"
+            exit 1
+        fi
+        MFA_CODE="$mfa_token"
+        # Limpiar la variable para reducir ventana de exposición
+        unset mfa_token
+        unset AWS_AI_MFA_TOKEN
+    # Modo desatendido o sin TTY: no bloquear, reportar que se necesita MFA
+    elif [ "$unattended_mode" = "true" ] || [ "$unattended_mode" = "1" ] || [ ! -t 0 ]; then
+        log_debug "Modo desatendido o sin TTY: MFA requerido"
+        echo "AWS_AI_MFA_REQUIRED=1" >&2
+        echo "🔐 Necesito MFA" >&2
+        exit 2
+    else
+        # Modo interactivo tradicional
+        echo "🔐 Necesito MFA"
+        read -r -p "Código MFA: " MFA_CODE
+    fi
+
+    log_debug "Obteniendo credenciales temporales con STS"
 
 CREDS=$(aws sts assume-role \
 --profile "$aws_profile" \
